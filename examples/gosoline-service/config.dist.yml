@@ -1,0 +1,38 @@
+app:
+  env: dev
+  name: order-service
+
+kafka_client:
+  connection:
+    default:
+      bootstrap_servers: [ "{KAFKA_BOOTSTRAP_SERVERS}" ]  # e.g. KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+      sasl_enabled: false
+      tls_enabled: false
+      logging_enabled: true
+      net_read_timeout: 5s             # detect a vanished broker in 5s instead of 30s
+      net_write_timeout: 5s
+  consumer:
+    orders:
+      topic: orders
+      group_id: order-service
+      worker_count: 4                  # 4 handlers per partition, same order key → same handler
+    order_events_archive:
+      topic: order-events
+      group_id: order-archiver
+      batch_size: 50
+      batch_timeout: 2s
+  producer:
+    order_events:
+      partitioner: active_partition   # order-events consumers don't need per-key ordering
+      circuit_breaker:
+        max_failures: 3
+        open_duration: 30s
+    audit_log:
+      {}                               # async; default consistent_hash partitioner
+
+httpserver:
+  default:
+    port: 8088
+
+kernel:
+  kill_timeout: 45s                    # consumer drain + async producer flush must fit in here

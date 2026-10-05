@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOLANGCI_LINT_VERSION: v2.14
+
+jobs:
+  lint:
+    name: Lint (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [., kafkagoso, examples]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          working-directory: ${{ matrix.module }}
+          # one shared config at the repository root
+          args: --config=${{ github.workspace }}/.golangci.yml
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      kafka:
+        image: apache/kafka:4.3.1
+        ports:
+          - 9092:9092
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    env:
+      KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+      KAFKA_REQUIRED: "1" # fail instead of skipping when the broker is missing
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            kafkagoso/go.sum
+            examples/go.sum
+
+      - name: Wait for Kafka
+        # the port opens before the broker accepts requests: wait until metadata can be fetched
+        run: go run ./internal/cmd/waitkafka
+
+      - name: Library
+        run: go test -race -count=1 -timeout 20m ./...
+
+      - name: kafkagoso
+        working-directory: kafkagoso
+        run: go test -race -count=1 -timeout 10m ./...
+
+      - name: Examples build
+        working-directory: examples
+        run: |
+          go build ./...
+          go vet ./...
+
+  tidy:
+    name: go mod tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Check go.mod / go.sum are tidy
+        run: |
+          for dir in . kafkagoso examples; do
+            (cd "$dir" && go mod tidy)
+          done
+          git diff --exit-code -- '**/go.mod' '**/go.sum' go.mod go.sum
