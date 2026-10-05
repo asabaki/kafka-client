@@ -8,6 +8,14 @@ minor versions may contain breaking changes.
 
 First public version.
 
+### Breaking
+
+- Removed `XDGSCRAMClient`, `SHA256` and `SHA512`: SCRAM is configured from `SaslMechanisms`, the client is internal.
+- `MessageOption` is unexported; use `Option` values such as `WithTimestamp`.
+- `RecordHeaderKeyPartitionKey` is a constant.
+
+### Added
+
 - Sync producer (acknowledged, bounded by `ctx`) and async producer (fire and forget, bounded retry buffer, flushed
   on `Close`).
 - Consumer group and batch consumer group, with graceful shutdown, `Run(ctx)`, and an opt-in per-key worker pool

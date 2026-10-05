@@ -12,6 +12,8 @@ import (
 	"github.com/IBM/sarama"
 	gometrics "github.com/rcrowley/go-metrics"
 	"go.opentelemetry.io/otel/propagation"
+
+	"github.com/asabaki/kafka-client/internal/scram"
 )
 
 var hostname string
@@ -197,9 +199,9 @@ func (k KafkaConfig) ToSaramaConfig(opts ...KafkaConfigOption) *sarama.Config {
 		c.Net.SASL.Handshake = true
 		switch c.Net.SASL.Mechanism {
 		case sarama.SASLTypeSCRAMSHA256:
-			c.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: sha256.New} }
+			c.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &scram.Client{HashGeneratorFcn: sha256.New} }
 		case sarama.SASLTypeSCRAMSHA512:
-			c.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &XDGSCRAMClient{HashGeneratorFcn: sha512.New} }
+			c.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient { return &scram.Client{HashGeneratorFcn: sha512.New} }
 		}
 	}
 	c.Net.KeepAlive = k.KeepAlive

@@ -10,6 +10,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/asabaki/kafka-client/internal/carrier"
 )
 
 func TestTraceContextPropagatesThroughHeaders(t *testing.T) {
@@ -31,22 +33,11 @@ func TestTraceContextPropagatesThroughHeaders(t *testing.T) {
 		cMsg.Headers = append(cMsg.Headers, &pMsg.Headers[i])
 	}
 
-	assert.Equal(t, "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", consumerMessageCarrier{msg: cMsg}.Get("traceparent"))
-	assert.Equal(t, "b", consumerMessageCarrier{msg: cMsg}.Get("a"), "user headers must be kept")
+	assert.Equal(t, "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01", carrier.Consumer{Msg: cMsg}.Get("traceparent"))
+	assert.Equal(t, "b", carrier.Consumer{Msg: cMsg}.Get("a"), "user headers must be kept")
 
 	got := trace.SpanContextFromContext(extractTraceContext(context.Background(), globalPropagator{}, cMsg))
 	assert.Equal(t, traceID, got.TraceID())
 	assert.Equal(t, spanID, got.SpanID())
 	assert.True(t, got.IsRemote())
-}
-
-func TestProducerCarrierSetOverwritesExistingHeader(t *testing.T) {
-	msg := &sarama.ProducerMessage{Headers: []sarama.RecordHeader{{Key: []byte("traceparent"), Value: []byte("old")}}}
-	c := producerMessageCarrier{msg: msg}
-
-	c.Set("traceparent", "new")
-
-	require.Len(t, msg.Headers, 1)
-	assert.Equal(t, "new", c.Get("traceparent"))
-	assert.Equal(t, []string{"traceparent"}, c.Keys())
 }

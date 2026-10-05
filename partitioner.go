@@ -2,7 +2,8 @@ package kafkaclient
 
 import (
 	"github.com/IBM/sarama"
-	"github.com/cespare/xxhash/v2"
+
+	"github.com/asabaki/kafka-client/internal/hash"
 )
 
 var _ sarama.DynamicConsistencyPartitioner = (*ConsistentHashPartitioner)(nil)
@@ -59,21 +60,5 @@ func hashKey(key sarama.Encoder, numPartitions int32) (int32, error) {
 	if err != nil {
 		return -1, err
 	}
-	return jumpHash(xxhash.Sum64(keyBytes), numPartitions), nil
-}
-
-// jumpHash implements consistent hashing from this paper: http://arxiv.org/abs/1406.2294
-// code is copied from https://github.com/dgryski/go-jump/blob/master/jump.go
-func jumpHash(key uint64, numBuckets int32) int32 {
-	var b int64 = -1
-	var j int64
-
-	for j < int64(numBuckets) {
-		b = j
-		key = key*2862933555777941757 + 1
-		j = int64(float64(b+1) * (float64(int64(1)<<31) / float64((key>>33)+1)))
-	}
-
-	// b < numBuckets (an int32), so the conversion cannot overflow.
-	return int32(b) // #nosec G115
+	return hash.Partition(keyBytes, numPartitions), nil
 }

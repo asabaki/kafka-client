@@ -1,23 +1,11 @@
 package kafkaclient
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/IBM/sarama"
 	"github.com/stretchr/testify/assert"
 )
-
-func TestJumpHash(t *testing.T) {
-	t.SkipNow()
-	for bucket := int32(1); bucket <= 10; bucket++ {
-		fmt.Printf("Bucket: %d\n", bucket)
-		for i := uint64(0); i < 80; i++ {
-			fmt.Printf("%2d|", jumpHash(i, bucket))
-		}
-		fmt.Println()
-	}
-}
 
 func TestConsistentHashPartitioner_Partition_ByMessageKey(t *testing.T) {
 	partitioner := NewConsistentHashPartition("topic")

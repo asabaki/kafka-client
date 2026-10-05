@@ -90,14 +90,3 @@ func TestPrepareConfigInstallsSaramaLoggerOnlyWithDebugAndLogger(t *testing.T) {
 	prepareConfig(KafkaConfig{Debug: true}, WithLogger(logger))
 	assert.Equal(t, saramaLogger{logger: logger}, sarama.Logger)
 }
-
-func TestJumpHashStaysInRange(t *testing.T) {
-	for buckets := int32(1); buckets <= 64; buckets++ {
-		for key := uint64(0); key < 2000; key++ {
-			p := jumpHash(key*0x9E3779B97F4A7C15, buckets)
-			if p < 0 || p >= buckets {
-				t.Fatalf("jumpHash out of range: key=%d buckets=%d got=%d", key, buckets, p)
-			}
-		}
-	}
-}

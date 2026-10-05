@@ -1,24 +1,18 @@
-package kafkaclient
+// Package scram adapts github.com/xdg-go/scram to sarama's SCRAMClient interface.
+package scram
 
 import (
-	"crypto/sha256"
-	"crypto/sha512"
-
 	"github.com/xdg-go/scram"
 )
 
-var (
-	SHA256 scram.HashGeneratorFcn = sha256.New
-	SHA512 scram.HashGeneratorFcn = sha512.New
-)
-
-type XDGSCRAMClient struct {
+// Client is a sarama.SCRAMClient for the hash function in HashGeneratorFcn.
+type Client struct {
 	*scram.Client
 	*scram.ClientConversation
 	scram.HashGeneratorFcn
 }
 
-func (x *XDGSCRAMClient) Begin(userName, password, authzID string) (err error) {
+func (x *Client) Begin(userName, password, authzID string) (err error) {
 	x.Client, err = x.HashGeneratorFcn.NewClient(userName, password, authzID)
 	if err != nil {
 		return err
@@ -27,11 +21,11 @@ func (x *XDGSCRAMClient) Begin(userName, password, authzID string) (err error) {
 	return nil
 }
 
-func (x *XDGSCRAMClient) Step(challenge string) (response string, err error) {
+func (x *Client) Step(challenge string) (response string, err error) {
 	response, err = x.ClientConversation.Step(challenge)
 	return
 }
 
-func (x *XDGSCRAMClient) Done() bool {
+func (x *Client) Done() bool {
 	return x.ClientConversation.Done()
 }

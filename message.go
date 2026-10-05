@@ -10,18 +10,19 @@ import (
 	"github.com/asabaki/kafka-client/internal/timeutil"
 )
 
-var (
-	RecordHeaderKeyPartitionKey = "partition_key"
-)
+// RecordHeaderKeyPartitionKey is the header carrying a message's partition key (see MessageWithPartitionKey).
+const RecordHeaderKeyPartitionKey = "partition_key"
 
-type MessageOption struct {
+type messageOptions struct {
 	timestamp time.Time
 }
 
-type Option func(*MessageOption)
+// Option tunes a single publish.
+type Option func(*messageOptions)
 
+// WithTimestamp sets the message timestamp (default: now).
 func WithTimestamp(timestamp time.Time) Option {
-	return func(o *MessageOption) {
+	return func(o *messageOptions) {
 		o.timestamp = timestamp
 	}
 }
@@ -45,9 +46,9 @@ func mapToRecordHeader(headers map[string]string) []sarama.RecordHeader {
 }
 
 func toProducerMessage(ctx context.Context, propagator propagation.TextMapPropagator, msg Message, opts ...Option) (*sarama.ProducerMessage, error) {
-	var messageOptions MessageOption
+	var options messageOptions
 	for _, opt := range opts {
-		opt(&messageOptions)
+		opt(&options)
 	}
 
 	payload, err := msg.KafkaMessagePayload()
@@ -56,10 +57,10 @@ func toProducerMessage(ctx context.Context, propagator propagation.TextMapPropag
 	}
 
 	timestamp := func() time.Time {
-		if messageOptions.timestamp.IsZero() {
+		if options.timestamp.IsZero() {
 			return timeutil.Now()
 		}
-		return messageOptions.timestamp
+		return options.timestamp
 	}()
 
 	pMsg := &sarama.ProducerMessage{
@@ -74,7 +75,7 @@ func toProducerMessage(ctx context.Context, propagator propagation.TextMapPropag
 		pMsg.Headers = headers
 	}
 
-	propagator.Inject(ctx, producerMessageCarrier{msg: pMsg})
+	injectTraceContext(ctx, propagator, pMsg)
 
 	return pMsg, nil
 }
