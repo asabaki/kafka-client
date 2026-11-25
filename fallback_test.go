@@ -105,3 +105,14 @@ func TestRetryBackoffStopsOnContextCancel(t *testing.T) {
 	assert.Equal(t, 1, attempts)
 	assert.Less(t, time.Since(start), time.Second, "the backoff wait ends when ctx is canceled")
 }
+
+func TestWrapWithFallbackHandler_PanicIsParked(t *testing.T) {
+	var got error
+	h := kafkaclient.WrapWithFallbackHandler(
+		func(context.Context, *sarama.ConsumerMessage) error { panic("nil map") },
+		func(_ context.Context, _ *sarama.ConsumerMessage, err error) error { got = err; return nil },
+	)
+	require.NoError(t, h(context.Background(), &sarama.ConsumerMessage{Offset: 7}))
+	assert.ErrorIs(t, got, kafkaclient.ErrHandlerPanic)
+	assert.ErrorContains(t, got, "nil map")
+}

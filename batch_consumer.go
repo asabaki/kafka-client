@@ -147,7 +147,7 @@ func (h *batchConsumerHandler) flushBatch(session sarama.ConsumerGroupSession) e
 		messagesWithContext = append(messagesWithContext, &MessageWithContext[*sarama.ConsumerMessage]{ctx: ctx, msg: msg})
 	}
 
-	if err := h.handler(messagesWithContext); err != nil {
+	if err := callRecovering(func() error { return h.handler(messagesWithContext) }); err != nil {
 		h.logger.Error(session.Context(), "batch processing error: topic=%s consumer_group=%s: %s", h.topic, h.consumerGroupName, err)
 		return err
 	}

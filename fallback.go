@@ -24,7 +24,7 @@ type FallbackFunc func(ctx context.Context, msg *sarama.ConsumerMessage, handler
 //	)
 func WrapWithFallbackHandler(handler MessageHandler[*sarama.ConsumerMessage], fallback FallbackFunc) MessageHandler[*sarama.ConsumerMessage] {
 	return func(ctx context.Context, msg *sarama.ConsumerMessage) error {
-		err := handler(ctx, msg)
+		err := callRecovering(func() error { return handler(ctx, msg) })
 		if err == nil {
 			return nil
 		}
@@ -39,7 +39,7 @@ func WrapWithFallbackHandler(handler MessageHandler[*sarama.ConsumerMessage], fa
 // every message of the batch goes to fallback.
 func WrapWithFallbackBatchHandler(handler MessagesHandler[*sarama.ConsumerMessage], fallback FallbackFunc) MessagesHandler[*sarama.ConsumerMessage] {
 	return func(messages []*MessageWithContext[*sarama.ConsumerMessage]) error {
-		err := handler(messages)
+		err := callRecovering(func() error { return handler(messages) })
 		if err == nil {
 			return nil
 		}

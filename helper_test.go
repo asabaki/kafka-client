@@ -85,6 +85,11 @@ func makeKafkaConfigForTest() kafkaclient.KafkaConfig {
 		MetricsDisabled:       true,
 		ConsumerGroupMaxRetry: 3,
 		ProducerTimeout:       5 * time.Second,
+		// the zero value means acks=0: a broker answers a produce to a just-created partition whose leader isn't ready
+		// by closing the connection, so the next send fails with "broken pipe" instead of being retried
+		ProducerRequiredAcks: -1,
+		ProducerRetryMax:     3,
+		ProducerRetryBackoff: 100 * time.Millisecond,
 	}
 }
 func createProducerForTest(t *testing.T, bootstrapServers []string) sarama.SyncProducer {

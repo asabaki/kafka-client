@@ -14,7 +14,25 @@ First public version.
 - `MessageOption` is unexported; use `Option` values such as `WithTimestamp`.
 - `RecordHeaderKeyPartitionKey` is a constant.
 
+### Fixed
+
+- A consumer group whose join failed (for example, the group coordinator broker died) never joined again: every
+  retry returned the same error, and the consumer stopped after `ConsumerGroupMaxRetry` attempts. It now rejoins
+  once Kafka has moved the group to another broker, about 10s after the broker dies.
+
+- A handler panic crashed the process from a sarama goroutine. It now returns `ErrHandlerPanic` (with the stack) as
+  the handler's error, so the message is redelivered, or parked by `WrapWithFallbackHandler`.
+- A member that owns no partitions never reset its failure count, so retries spread over its whole lifetime added up
+  to `ConsumerGroupMaxRetry` and stopped it. The count now resets on every successful join.
+
+- Stopping a consumer while it waited to retry a failed join started one more join attempt, which could hold the
+  shutdown up on unreachable brokers.
+
 ### Added
+
+- `ConsumerBalanceStrategies` (`consumer_balance_strategies`), including `cooperative-sticky`, and the group timeouts
+  `ConsumerSessionTimeout`, `ConsumerHeartbeatInterval`, `ConsumerRebalanceTimeout`. Every constructor rejects an
+  unknown strategy name, producers included, since they share the connection config.
 
 - Sync producer (acknowledged, bounded by `ctx`) and async producer (fire and forget, bounded retry buffer, flushed
   on `Close`).

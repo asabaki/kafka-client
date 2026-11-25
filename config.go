@@ -86,6 +86,15 @@ type KafkaConfig struct {
 	// 4096 messages / 32 MiB to those minimums.
 	ProducerRetryMaxBufferLength int   `env:"KAFKA_PRODUCER_RETRY_MAX_BUFFER_LENGTH" envconfig:"KAFKA_PRODUCER_RETRY_MAX_BUFFER_LENGTH" cfg:"producer_retry_max_buffer_length"`
 	ProducerRetryMaxBufferBytes  int64 `env:"KAFKA_PRODUCER_RETRY_MAX_BUFFER_BYTES" envconfig:"KAFKA_PRODUCER_RETRY_MAX_BUFFER_BYTES" cfg:"producer_retry_max_buffer_bytes"`
+	// ConsumerBalanceStrategies are offered to the group in priority order: range, roundrobin, sticky,
+	// cooperative-sticky. The group uses the cooperative protocol only when every strategy of every member supports
+	// it. Empty = range.
+	ConsumerBalanceStrategies []string `env:"KAFKA_CONSUMER_BALANCE_STRATEGIES" envconfig:"KAFKA_CONSUMER_BALANCE_STRATEGIES" cfg:"consumer_balance_strategies"`
+	// ConsumerSessionTimeout, ConsumerHeartbeatInterval and ConsumerRebalanceTimeout tune group membership.
+	// 0 = sarama's default (10s / 3s / 60s).
+	ConsumerSessionTimeout    time.Duration `env:"KAFKA_CONSUMER_SESSION_TIMEOUT" envconfig:"KAFKA_CONSUMER_SESSION_TIMEOUT" cfg:"consumer_session_timeout"`
+	ConsumerHeartbeatInterval time.Duration `env:"KAFKA_CONSUMER_HEARTBEAT_INTERVAL" envconfig:"KAFKA_CONSUMER_HEARTBEAT_INTERVAL" cfg:"consumer_heartbeat_interval"`
+	ConsumerRebalanceTimeout  time.Duration `env:"KAFKA_CONSUMER_REBALANCE_TIMEOUT" envconfig:"KAFKA_CONSUMER_REBALANCE_TIMEOUT" cfg:"consumer_rebalance_timeout"`
 
 	producerPartitioner sarama.PartitionerConstructor
 	tlsConfig           *tls.Config
@@ -257,7 +266,17 @@ func (k KafkaConfig) ToSaramaConfig(opts ...KafkaConfigOption) *sarama.Config {
 	// Enable consumer to return errors on the channel for instrumentation
 	c.Consumer.Return.Errors = true
 
-	c.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{sarama.NewBalanceStrategyRange()}
+	// unknown names are rejected by NewConsumerGroup; ToSaramaConfig keeps its error-free signature and skips them
+	c.Consumer.Group.Rebalance.GroupStrategies, _ = k.balanceStrategies()
+	if k.ConsumerSessionTimeout > 0 {
+		c.Consumer.Group.Session.Timeout = k.ConsumerSessionTimeout
+	}
+	if k.ConsumerHeartbeatInterval > 0 {
+		c.Consumer.Group.Heartbeat.Interval = k.ConsumerHeartbeatInterval
+	}
+	if k.ConsumerRebalanceTimeout > 0 {
+		c.Consumer.Group.Rebalance.Timeout = k.ConsumerRebalanceTimeout
+	}
 
 	c.Consumer.IsolationLevel = parseIsolationLevel(k.IsolationLevel)
 
@@ -301,4 +320,41 @@ func parseIsolationLevel(level IsolationLevel) sarama.IsolationLevel {
 	default:
 		return sarama.ReadCommitted
 	}
+}
+
+const (
+	BalanceStrategyRange             = sarama.RangeBalanceStrategyName
+	BalanceStrategyRoundRobin        = sarama.RoundRobinBalanceStrategyName
+	BalanceStrategySticky            = sarama.StickyBalanceStrategyName
+	BalanceStrategyCooperativeSticky = sarama.CooperativeStickyBalanceStrategyName
+)
+
+// balanceStrategies builds new strategy values on every call: sticky strategies keep per-group state.
+func (k KafkaConfig) balanceStrategies() ([]sarama.BalanceStrategy, error) {
+	if len(k.ConsumerBalanceStrategies) == 0 {
+		return []sarama.BalanceStrategy{sarama.NewBalanceStrategyRange()}, nil
+	}
+
+	strategies := make([]sarama.BalanceStrategy, 0, len(k.ConsumerBalanceStrategies))
+	var unknown []string
+	for _, name := range k.ConsumerBalanceStrategies {
+		switch name {
+		case BalanceStrategyRange:
+			strategies = append(strategies, sarama.NewBalanceStrategyRange())
+		case BalanceStrategyRoundRobin:
+			strategies = append(strategies, sarama.NewBalanceStrategyRoundRobin())
+		case BalanceStrategySticky:
+			strategies = append(strategies, sarama.NewBalanceStrategySticky())
+		case BalanceStrategyCooperativeSticky:
+			strategies = append(strategies, sarama.NewBalanceStrategyCooperativeSticky())
+		default:
+			unknown = append(unknown, name)
+		}
+	}
+	if len(unknown) > 0 {
+		return strategies, fmt.Errorf("unknown consumer balance strategies %q, expected %s, %s, %s or %s", unknown,
+			BalanceStrategyRange, BalanceStrategyRoundRobin, BalanceStrategySticky, BalanceStrategyCooperativeSticky)
+	}
+
+	return strategies, nil
 }

@@ -230,6 +230,8 @@ matters more than throughput.
 |----------------------------|------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `isolation_level`          | `READ_COMMITTED` | `READ_COMMITTED` = skip messages of aborted/open transactions, `READ_UNCOMMITTED` = read everything. Any other value falls back to `READ_COMMITTED`       |
 | `consumer_group_max_retry` | `10`             | how many times in a row the consumer tries to rejoin the group after an error (waiting 1s, 2s, 3s, …). When exhausted, the consumer stops and so does the app |
+| `consumer_balance_strategies` | `[range]`     | strategies offered to the group in priority order: `range`, `roundrobin`, `sticky`, `cooperative-sticky`. `cooperative-sticky` keeps unmoved partitions consuming during a rebalance; switch an existing group via `[cooperative-sticky, range]` first. See [Rebalancing](../README.md#rebalancing) |
+| `consumer_session_timeout`, `consumer_heartbeat_interval`, `consumer_rebalance_timeout` | `0s` (10s / 3s / 60s) | group membership timing: a member silent for the session timeout is removed; heartbeats are sent at the interval; a rebalance waits up to the rebalance timeout for members to rejoin |
 | `slow_message_threshold`   | `5s`             | messages whose publish-to-processed time is at least this long are logged as `slow message` (only with `logging_enabled`)                                 |
 
 **Observability & behaviour**

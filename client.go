@@ -8,7 +8,10 @@ import (
 
 // NewAsyncProducer creates an asynchronous (at-most-once) producer.
 func NewAsyncProducer(config KafkaConfig, opts ...KafkaConfigOption) (AsyncProducer, error) {
-	config = prepareConfig(config, opts...)
+	config, err := prepareConfig(config, opts...)
+	if err != nil {
+		return nil, err
+	}
 	saramaCfg := config.ToSaramaConfig()
 	feedback := newFeedbackPartitioners()
 	saramaCfg.Producer.Partitioner = feedback.wrap(saramaCfg.Producer.Partitioner)
@@ -69,7 +72,10 @@ func NewAsyncProducer(config KafkaConfig, opts ...KafkaConfigOption) (AsyncProdu
 
 // NewSyncProducer creates a synchronous (acknowledged) producer.
 func NewSyncProducer(config KafkaConfig, opts ...KafkaConfigOption) (SyncProducer, error) {
-	config = prepareConfig(config, opts...)
+	config, err := prepareConfig(config, opts...)
+	if err != nil {
+		return nil, err
+	}
 	saramaCfg := config.ToSaramaConfig()
 	feedback := newFeedbackPartitioners()
 	saramaCfg.Producer.Partitioner = feedback.wrap(saramaCfg.Producer.Partitioner)
@@ -111,7 +117,10 @@ func NewConsumerGroup(
 	handler MessageHandler[*sarama.ConsumerMessage],
 	opts ...KafkaConfigOption,
 ) (ConsumerGroup, error) {
-	cfg = prepareConfig(cfg, opts...)
+	cfg, err := prepareConfig(cfg, opts...)
+	if err != nil {
+		return nil, err
+	}
 
 	h, err := createSaramaConsumerGroupHandler(cfg, topic, consumerGroup, handler)
 	if err != nil {
@@ -133,7 +142,10 @@ func NewBatchConsumerGroup(
 	handler MessagesHandler[*sarama.ConsumerMessage],
 	opts ...KafkaConfigOption,
 ) (ConsumerGroup, error) {
-	cfg = prepareConfig(cfg, opts...)
+	cfg, err := prepareConfig(cfg, opts...)
+	if err != nil {
+		return nil, err
+	}
 
 	h, err := createBatchSaramaConsumerGroupHandler(cfg, topic, groupName, handler, batchSize, batchTimeout)
 	if err != nil {
@@ -143,9 +155,14 @@ func NewBatchConsumerGroup(
 	return createConsumerGroup(cfg, topic, groupName, h, ignoreOldMessage)
 }
 
-// prepareConfig applies options and process-wide side effects (sarama debug logger, go-metrics switch).
-func prepareConfig(cfg KafkaConfig, opts ...KafkaConfigOption) KafkaConfig {
+// prepareConfig applies options and process-wide side effects (sarama debug logger, go-metrics switch), and rejects
+// settings ToSaramaConfig can't express: producers validate the consumer group settings too, so a typo in a strategy
+// name would otherwise surface as an unrelated sarama error.
+func prepareConfig(cfg KafkaConfig, opts ...KafkaConfigOption) (KafkaConfig, error) {
 	cfg = cfg.withOptions(opts...)
+	if _, err := cfg.balanceStrategies(); err != nil {
+		return cfg, err
+	}
 
 	if cfg.Debug && cfg.logger != nil {
 		// sarama.Logger is a package-level global in sarama; the last configured logger wins.
@@ -155,5 +172,5 @@ func prepareConfig(cfg KafkaConfig, opts ...KafkaConfigOption) KafkaConfig {
 		disableMetric()
 	}
 
-	return cfg
+	return cfg, nil
 }

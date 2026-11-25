@@ -80,6 +80,13 @@ jobs:
         working-directory: kafkagoso
         run: go test -race -count=1 -timeout 10m ./...
 
+      - name: kafkagoso (oldest supported gosoline)
+        # go.work lifts gosoline to the examples' version; without it, kafkagoso builds against its go.mod floor
+        working-directory: kafkagoso
+        env:
+          GOWORK: "off"
+        run: go test -race -count=1 -timeout 10m ./...
+
       - name: Examples build
         working-directory: examples
         run: |

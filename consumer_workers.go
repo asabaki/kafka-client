@@ -91,7 +91,7 @@ func (c *csmGrpHandler) handle(msg *sarama.ConsumerMessage) error {
 	st := timeutil.Now()
 
 	ctx := extractTraceContext(context.Background(), c.propagator, msg)
-	if err := c.handler(ctx, msg); err != nil {
+	if err := callRecovering(func() error { return c.handler(ctx, msg) }); err != nil {
 		c.logger.Error(ctx, "message handling failed, stopping session (message will be redelivered): topic=%s consumer_group=%s partition=%d offset=%d: %s",
 			c.topic, c.consumerGroupName, msg.Partition, msg.Offset, err)
 		return err

@@ -158,9 +158,9 @@ func (c *csmGroup) runSaramaConsumer(ctx context.Context) error {
 
 			select {
 			case <-ctx.Done():
+				continue
 			case <-time.After(time.Duration(retryCounter.Count()) * time.Second):
 			}
-			continue
 		}
 		cgErr = c.client.Consume(ctx, []string{c.topic}, &handler)
 	}
@@ -303,6 +303,7 @@ func (c *csmGrpHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim 
 			}
 			session.MarkMessage(msg, "")
 		case <-session.Context().Done():
+			c.logger.Debug(session.Context(), "consumer session ended: topic=%s consumer_group=%s", c.topic, c.consumerGroupName)
 			return nil
 		}
 	}
@@ -327,7 +328,10 @@ type saramaConsumerWithRetryCounter struct {
 	retryCounter *counter
 }
 
+// Setup runs once the group is joined, also for a member that got no partitions (more members than partitions), so a
+// member that never receives a claim still starts counting failures from zero after each successful join.
 func (s saramaConsumerWithRetryCounter) Setup(session sarama.ConsumerGroupSession) error {
+	s.retryCounter.Clear()
 	return s.handler.Setup(session)
 }
 
@@ -336,7 +340,6 @@ func (s saramaConsumerWithRetryCounter) Cleanup(session sarama.ConsumerGroupSess
 }
 
 func (s saramaConsumerWithRetryCounter) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	s.retryCounter.Clear()
 	return s.handler.ConsumeClaim(session, claim)
 }
 

@@ -2,6 +2,9 @@ package kafkaclient
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"runtime/debug"
 
 	"github.com/IBM/sarama"
 )
@@ -118,4 +121,17 @@ func WrapWithSaramaMessagesHandler[T any](handler MessagesHandler[T], converter 
 		}
 		return handler(convertedMessages)
 	}
+}
+
+// ErrHandlerPanic wraps a panic raised by a message handler. The panic becomes the handler's error, so the message
+// is redelivered (or parked by a fallback) instead of crashing the process from a sarama goroutine nobody can recover.
+var ErrHandlerPanic = errors.New("message handler panicked")
+
+func callRecovering(handle func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%w: %v\n%s", ErrHandlerPanic, r, debug.Stack())
+		}
+	}()
+	return handle()
 }

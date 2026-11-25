@@ -27,6 +27,7 @@ kernel modules, shared producers, gosoline trace propagation and the `config.dis
   - [Async producer](#async-producer)
   - [Messages](#messages)
   - [Consumer group](#consumer-group)
+  - [Rebalancing](#rebalancing)
   - [Consumer workers](#consumer-workers)
   - [Batch consumer group](#batch-consumer-group)
   - [Handlers and converters](#handlers-and-converters)
@@ -176,6 +177,8 @@ code, an unset field is its Go zero value.
 | `ProducerHeartbeatInterval time.Duration`           | `KAFKA_PRODUCER_HEARTBEAT_INTERVAL`   | `5m`             | heartbeat interval; must be > 0 when enabled                                                                         |
 | `IsolationLevel IsolationLevel`                     | `KAFKA_ISOLATION_LEVEL`               | `READ_COMMITTED` | `IsolationLevelReadCommitted` / `IsolationLevelReadUncommitted`                                                      |
 | `ConsumerGroupMaxRetry int`                         | `KAFKA_CONSUMER_GROUP_MAX_RETRY`      | `10`             | consecutive rejoin attempts before a consumer gives up                                                               |
+| `ConsumerBalanceStrategies []string`                | `KAFKA_CONSUMER_BALANCE_STRATEGIES`   | `range`          | strategies offered to the group, in priority order: `range`, `roundrobin`, `sticky`, `cooperative-sticky`; see [Rebalancing](#rebalancing) |
+| `ConsumerSessionTimeout`, `ConsumerHeartbeatInterval`, `ConsumerRebalanceTimeout time.Duration` | `KAFKA_CONSUMER_SESSION_TIMEOUT` / `_HEARTBEAT_INTERVAL` / `_REBALANCE_TIMEOUT` | `0` (10s / 3s / 60s) | how long a silent member stays in the group / how often it heartbeats / how long a rebalance waits for members to rejoin |
 | `SlowMessageThreshold time.Duration`                | `KAFKA_SLOW_MESSAGE_THRESHOLD`        | `5s`             | publish-to-processed time that gets a `slow message` warning (with a logger)                                         |
 | `Debug bool`                                        | `SARAMA_DEBUG`                        | `false`          | forward sarama's internal logs to the logger (needs `WithLogger`)                                                    |
 | `MetricsDisabled bool`                              | `KAFKA_METRICS_DISABLED`              | `false`          | turn off sarama's go-metrics for the whole process                                                                   |
@@ -354,8 +357,27 @@ type ConsumerGroup interface {
   consumer gave up.
 - Use `Start()` + `Close()` otherwise.
 - Connection errors are retried up to `ConsumerGroupMaxRetry` times in a row, waiting 1s, 2s, 3s, …. After that the
-  consumer stops, `IsRunning()` turns false and `Run` returns the error.
+  consumer stops, `IsRunning()` turns false and `Run` returns the error. A broker that disappears, such as a
+  reclaimed spot instance, is covered: once Kafka moves the group to another broker, the next retry joins it there.
 - A consumer cannot be restarted after `Close()`; create a new one.
+
+### Rebalancing
+
+A group rebalances whenever a member joins or leaves: a deploy, a scale-up, a pod eviction. `ConsumerBalanceStrategies`
+decides what that costs.
+
+- `range` (default), `roundrobin` and `sticky` are eager. Every member gives up **all** its partitions, the group
+  waits until everyone rejoined, then hands them out again. Nothing is consumed in between.
+- `cooperative-sticky` revokes only the partitions that move to another member. The others keep being consumed
+  through the rebalance. The group needs a second, short rebalance to hand out the revoked partitions.
+
+The group uses the cooperative protocol only if every strategy of every member supports it. So move an existing
+group in two rolling deploys, never straight to `cooperative-sticky`:
+
+1. `[cooperative-sticky, range]`: new members still agree with old ones on `range`.
+2. `[cooperative-sticky]`: once every member runs step 1.
+
+`cooperative-sticky` needs Kafka 2.4 or newer.
 
 ### Consumer workers
 
@@ -655,6 +677,8 @@ sarama's own go-metrics are separate; disable them with `MetricsDisabled`.
 - **Consumers:** at-least-once. A message is marked only after the handler returns `nil`, and offsets are committed in
   the background every second. After a crash or rebalance, the messages since the last commit are delivered again.
   Make handlers idempotent.
+- **Handler panics are errors.** A panic in a handler is recovered and returned as `ErrHandlerPanic` with the stack,
+  so it is treated like any other handler error and never crashes the process.
 - **Handler errors block.** A handler that keeps failing on one message redelivers it forever and blocks that
   partition. Use a [fallback](#fallback-and-dead-letter-topic) to park it and move on, with
   [retry](#retry-with-backoff) in front for temporary errors.

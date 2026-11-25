@@ -80,13 +80,13 @@ func TestPrepareConfigInstallsSaramaLoggerOnlyWithDebugAndLogger(t *testing.T) {
 	prev := sarama.Logger
 	t.Cleanup(func() { sarama.Logger = prev })
 
-	prepareConfig(KafkaConfig{Debug: true})
+	_, _ = prepareConfig(KafkaConfig{Debug: true})
 	assert.Equal(t, prev, sarama.Logger, "debug without logger must not touch sarama.Logger")
 
-	prepareConfig(KafkaConfig{}, WithLogger(&recordingLogger{}))
+	_, _ = prepareConfig(KafkaConfig{}, WithLogger(&recordingLogger{}))
 	assert.Equal(t, prev, sarama.Logger, "logger without debug must not touch sarama.Logger")
 
 	logger := &recordingLogger{}
-	prepareConfig(KafkaConfig{Debug: true}, WithLogger(logger))
+	_, _ = prepareConfig(KafkaConfig{Debug: true}, WithLogger(logger))
 	assert.Equal(t, saramaLogger{logger: logger}, sarama.Logger)
 }
